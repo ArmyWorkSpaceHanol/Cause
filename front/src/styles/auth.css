@@ -1,0 +1,101 @@
+/* Auth layout and components - responsive and clean */
+
+.auth-root { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; background: #f7f9fb }
+.auth-card { width:100%; max-width:420px; background:#fff; border-radius:12px; box-shadow:0 6px 18px rgba(20,30,40,0.08); padding:36px; box-sizing:border-box }
+.service-title { margin:0 0 18px 0; font-size:28px; text-align:center; color:#111 }
+.auth-form { display:flex; flex-direction:column; gap:12px }
+.form-input { display:flex; flex-direction:column; gap:8px }
+.form-label { font-size:13px; color:#555 }
+.input-wrap { position:relative }
+.input-field { padding:12px 14px; padding-right:48px; border:1px solid #e3e7ee; border-radius:8px; font-size:15px; outline:none; width:100%; box-sizing:border-box }
+.input-field:focus { border-color:#7aa2ff; box-shadow:0 0 0 4px rgba(122,162,255,0.08) }
+.password-toggle { position:absolute; right:8px; top:50%; transform:translateY(-50%); background:transparent; border:none; cursor:pointer; width:36px; height:36px; border-radius:6px; color:#6b7280; padding:0; outline:none; -webkit-tap-highlight-color: transparent }
+.password-toggle .icon { position:absolute; left:50%; top:50%; transform:translate(-50%, -50%) scale(0.85) rotate(-10deg); opacity:0; transition:opacity .18s ease, transform .18s ease }
+.password-toggle .icon.visible { opacity:1; transform:translate(-50%, -50%) scale(1) rotate(0deg) }
+.password-toggle .icon.hidden { opacity:0; transform:translate(-50%, -50%) scale(0.75) rotate(10deg) }
+.password-toggle svg { width:20px; height:20px }
+.password-toggle:focus,
+.password-toggle:active {
+  outline:none;
+  box-shadow:none;
+}
+.find-links { display:flex; gap:8px; font-size:13px; color:#6b7280; align-items:center }
+.sep { color:#cbd5e1 }
+.auth-button { margin-top:8px; padding:12px 14px; background:#2563eb; color:#fff; border:none; border-radius:10px; cursor:pointer; font-weight:600 }
+.auth-button:hover { background:#1e4fd8 }
+.auth-error { color:#d14343; font-size:13px; margin-top:-4px; margin-bottom:8px; text-align:center }
+.signup-row { margin-top:14px; display:flex; gap:8px; justify-content:center; font-size:14px; color:#374151 }
+.link-text { color:#2563eb; text-decoration:none }
+.link-text:hover { text-decoration:underline }
+.info { text-align:center }
+
+/* Responsive adjustments */
+@media (max-width: 520px) {
+  .auth-card { padding:24px; border-radius:8px }
+  .service-title { font-size:22px }
+}
+
+.main-page { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px; padding:24px; background: linear-gradient(180deg, #eef4ff 0%, #f7f9fb 100%) }
+.book-animation { position:relative; width:260px; height:180px; perspective:1200px }
+.book-cover { position:absolute; top:0; width:50%; height:100%; background:#fefefe; border:1px solid #d2d9e8; border-radius:4px; box-shadow:0 20px 50px rgba(15,23,42,0.12); transform-origin:left center; transform:rotateY(0deg) }
+.book-cover.right { left:50%; transform-origin:left center; background:#fff }
+.book-cover.left { left:0; transform-origin:right center }
+.book-spine { position:absolute; left:50%; top:0; width:8px; height:100%; background:#1d4ed8; transform:translateX(-50%) }
+.book-animation.open .book-cover.left { animation: bookOpenLeft .7s ease forwards }
+.book-animation.open .book-cover.right { animation: bookOpenRight .7s ease forwards }
+
+@keyframes bookOpenLeft {
+  from { transform: rotateY(0deg) }
+  to { transform: rotateY(-28deg) }
+}
+
+@keyframes bookOpenRight {
+  from { transform: rotateY(0deg) }
+  to { transform: rotateY(28deg) }
+}
+.main-page .main-content { width:100%; max-width:520px; text-align:center; background:#fff; border-radius:18px; padding:34px; box-shadow:0 18px 48px rgba(20,30,40,0.08) }
+.main-page h2 { margin:0 0 12px; font-size:28px; color:#111827 }
+.main-page p { margin:0 0 22px; color:#4b5563; line-height:1.65 }
+.admin-badge { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:8px 12px; border-radius:999px; background:#e0e7ff; color:#1d4ed8; font-weight:600; margin-bottom:20px }
+.main-content nav a { color:#2563eb; text-decoration:none; font-weight:600 }
+
+@media (max-width: 640px) {
+  .book-animation { width:200px; height:140px }
+  .main-page .main-content { padding:26px }
+}
+
+.library-layout { display:grid; grid-template-columns:1fr; gap:24px }
+.welcome-card { text-align:left; background:#f8fbff; border:1px solid #dbeafe; border-radius:20px; padding:26px; box-shadow:0 18px 42px rgba(15,23,42,0.08) }
+.welcome-card .lead { margin:0 0 10px; color:#2563eb; font-weight:700; letter-spacing:0.04em }
+.welcome-card .typing-text { margin:0; font-size:32px; line-height:1.1; color:#111827; min-height:54px }
+.typing-cursor { display:inline-block; width:2px; height:1em; background:#111827; margin-left:4px; animation: blinkCursor 700ms steps(1) infinite }
+.welcome-card .subtext { margin:14px 0 0; color:#4b5563; line-height:1.75 }
+
+.shelf-card { background:#fff; border-radius:24px; border:1px solid #e2e8f0; padding:24px; box-shadow:0 18px 48px rgba(15,23,42,0.08) }
+.shelf-header { display:flex; gap:8px; margin-bottom:18px }
+.shelf-dot { width:10px; height:10px; background:#93c5fd; border-radius:50% }
+.book-shelf { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:16px }
+.book-card { display:flex; flex-direction:column; align-items:flex-start; justify-content:space-between; min-height:168px; width:100%; padding:20px; background:linear-gradient(180deg, #ffffff 0%, #eff6ff 100%); border:1px solid #dbeafe; border-radius:22px; cursor:pointer; transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease }
+.book-card:hover { transform: translateY(-4px); box-shadow:0 20px 50px rgba(59,130,246,0.14); border-color:#93c5fd }
+.book-card h3 { margin:0 0 8px; color:#0f172a; font-size:18px }
+.book-card p { margin:0 0 14px; color:#475569; font-size:14px; line-height:1.6 }
+.book-chip { display:inline-flex; padding:6px 10px; border-radius:999px; font-size:12px; font-weight:700; background:#dbeafe; color:#2563eb; margin-bottom:12px }
+.book-action { font-size:13px; color:#1d4ed8; font-weight:700 }
+
+.main-footer { display:flex; align-items:center; justify-content:space-between; gap:16px; padding-top:10px; border-top:1px solid #e2e8f0 }
+.logout-link { color:#2563eb; font-weight:700; text-decoration:none }
+
+@media (max-width: 840px) {
+  .book-shelf { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+}
+
+@media (max-width: 640px) {
+  .book-shelf { grid-template-columns:1fr }
+  .welcome-card .typing-text { font-size:26px }
+  .shelf-card { padding:20px }
+}
+
+@keyframes blinkCursor {
+  0%, 40% { opacity: 1 }
+  41%, 100% { opacity: 0 }
+}
