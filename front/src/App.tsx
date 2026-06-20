@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage'
 import FindAccountPage from './pages/FindAccountPage'
 import SignupPage from './pages/SignupPage'
 import MainPage from './pages/MainPage'
+import ProfilePage from './pages/ProfilePage'
 import { type Account } from './data/accounts'
 
 export default function App() {
@@ -20,6 +21,16 @@ export default function App() {
           element={
             currentAccount ? (
               <MainPage account={currentAccount} onLogout={() => setCurrentAccount(null)} />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            currentAccount ? (
+              <ProfilePage account={currentAccount} onLogout={() => setCurrentAccount(null)} />
             ) : (
               <Navigate to="/" replace />
             )
