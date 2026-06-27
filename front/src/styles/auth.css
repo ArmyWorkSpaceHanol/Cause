@@ -142,11 +142,27 @@
   box-shadow: inset 9px 0 14px rgba(255, 255, 255, 0.12), 0 14px 24px rgba(0, 0, 0, 0.18);
   transform-origin: bottom center;
   animation: bookPulse 3s ease-in-out infinite;
+  touch-action: none;
+  cursor: grab;
+  position: relative;
+  transition: transform 180ms cubic-bezier(.2,.9,.2,1), box-shadow 120ms ease;
 }
 
 .preview-book.blue { height: 108px; background: linear-gradient(160deg, #2563eb, #172554); }
 .preview-book.pink { height: 88px; background: linear-gradient(160deg, #db2777, #581c87); animation-delay: -0.8s; }
 .preview-book.green { height: 118px; background: linear-gradient(160deg, #059669, #064e3b); animation-delay: -1.6s; }
+
+.preview-book.dragging {
+  cursor: grabbing;
+  box-shadow: 0 28px 68px rgba(0,0,0,0.48), inset 12px 0 20px rgba(255,255,255,0.08);
+  transform: translateZ(18px) scale(1.02) !important;
+  transition: none;
+}
+
+/* pop burst effect */
+
+/* paper particles */
+/* demo preview and particle visuals removed */
 
 .auth-card-header {
   display: grid;
@@ -161,6 +177,9 @@
   font-size: clamp(1.5rem, 7vw, 2.35rem);
   line-height: 1.05;
   letter-spacing: -0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .auth-card-header p,
@@ -168,6 +187,9 @@
   margin: 0;
   color: #cbd5e1;
   line-height: 1.65;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .auth-form {
@@ -283,6 +305,7 @@
   background: linear-gradient(135deg, #2563eb, #7c3aed 54%, #db2777);
   box-shadow: 0 18px 38px rgba(124, 58, 237, 0.34);
   transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  white-space: nowrap;
 }
 
 .auth-button:hover {

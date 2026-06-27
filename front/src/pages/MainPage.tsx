@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Account } from '../data/accounts'
 
@@ -32,8 +32,12 @@ export default function MainPage({ account, onLogout }: Props) {
   const [typedLength, setTypedLength] = useState(0)
   const [phase, setPhase] = useState<'typing' | 'bookshelf'>('typing')
   const [books, setBooks] = useState<StudyBook[]>(initialBooks)
-  const [newBookTitle, setNewBookTitle] = useState('')
   const [selectedBook, setSelectedBook] = useState<StudyBook | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [modalTitle, setModalTitle] = useState('')
+  const [modalCategory, setModalCategory] = useState('')
+  const [modalPeriod, setModalPeriod] = useState('')
+  const modalTitleRef = useRef<HTMLInputElement | null>(null)
   const isBookshelfVisible = phase === 'bookshelf'
 
   const fullText = `${account.displayName}님 환영합니다.\n${streakDays}일 연속 로그인입니다.`
@@ -66,25 +70,72 @@ export default function MainPage({ account, onLogout }: Props) {
     return () => window.clearTimeout(transitionTimer)
   }, [typedLength, fullText, phase])
 
-  const handleAddBook = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!newBookTitle.trim()) return
-
+  const handleAddBook = (title: string, category: string, period: string) => {
     const nextBook: StudyBook = {
       id: Date.now().toString(),
-      title: newBookTitle.trim(),
-      subtitle: '새로운 공부 목표가 책으로 추가되었습니다.',
-      category: '새로운 목표',
+      title: title.trim(),
+      subtitle: period ? `공부 기간: ${period}` : '새로운 공부 목표가 책으로 추가되었습니다.',
+      category: category || '새로운 목표',
       color: bookColors[books.length % bookColors.length]
     }
 
-    setBooks((prev) => [nextBook, ...prev])
-    setNewBookTitle('')
+    // append to the end of the shelf
+    setBooks((prev) => [...prev, nextBook])
+    // attempt to send details to GPT (best-effort; requires VITE_OPENAI_KEY configured)
+    sendToGPT(nextBook, period).catch((err) => console.error('GPT 전송 실패', err))
   }
+
+  async function sendToGPT(book: StudyBook, period: string) {
+    const key = import.meta.env.VITE_OPENAI_KEY as string | undefined
+    if (!key) {
+      console.warn('VITE_OPENAI_KEY가 설정되어 있지 않아 GPT 호출을 건너뜁니다.')
+      return
+    }
+
+    const payload = {
+      model: 'gpt-3.5-turbo',
+      messages: [
+        { role: 'system', content: '당신은 학습 보조 도우미입니다.' },
+        {
+          role: 'user',
+          content: `새로운 공부 항목이 추가되었습니다. 제목: ${book.title}\n주제: ${book.category}\n공부 기간: ${period}\n설명: ${book.subtitle}`
+        }
+      ],
+      temperature: 0.6
+    }
+
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${key}`
+      },
+      body: JSON.stringify(payload)
+    })
+
+    if (!resp.ok) {
+      const text = await resp.text()
+      throw new Error(`GPT 응답 에러: ${resp.status} ${text}`)
+    }
+
+    const data = await resp.json()
+    const assistant = data.choices?.[0]?.message?.content
+    console.log('GPT 응답:', assistant)
+    return assistant
+  }
+
+  useEffect(() => {
+    if (isModalOpen) {
+      // focus the title input when modal opens
+      setTimeout(() => modalTitleRef.current?.focus(), 120)
+    }
+  }, [isModalOpen])
 
   return (
     <main className={`main-page library-page ${isBookshelfVisible ? 'is-library-open' : ''}`}>
       <div className="library-aurora" aria-hidden="true" />
+
+      {/* decorative side book removed per request */}
 
       <section className={`welcome-stage ${isBookshelfVisible ? 'hidden' : 'visible'}`} aria-live="polite" aria-hidden={isBookshelfVisible}>
         <p className="eyebrow">Cause Study Library</p>
@@ -114,15 +165,7 @@ export default function MainPage({ account, onLogout }: Props) {
           </Link>
         </header>
 
-        <form className="add-book-form" onSubmit={handleAddBook}>
-          <input
-            value={newBookTitle}
-            onChange={(e) => setNewBookTitle(e.target.value)}
-            placeholder="새로 공부할 항목을 책으로 꽂아보세요"
-            aria-label="새 공부 항목"
-          />
-          <button type="submit">책 추가</button>
-        </form>
+        {/* add button moved into the shelf as the last spine card */}
 
         <div className="shelf-unit" aria-label="공부 항목 책장">
           <div className="book-row">
@@ -139,6 +182,17 @@ export default function MainPage({ account, onLogout }: Props) {
                 <small>{book.subtitle}</small>
               </button>
             ))}
+
+            <button
+              type="button"
+              className="book-spine-card add-card"
+              onClick={() => setIsModalOpen(true)}
+              aria-label="책 추가하기"
+            >
+              <span className="book-category">추가</span>
+              <strong>새 공부 항목</strong>
+              <small>버튼을 눌러 항목을 추가하세요</small>
+            </button>
           </div>
         </div>
          <div className="main-footer">
@@ -168,6 +222,51 @@ export default function MainPage({ account, onLogout }: Props) {
                   <p>카테고리: {selectedBook.category}</p>
                   <p>책을 클릭하면 공부 내용을 더욱 자세히 확인할 수 있습니다.</p>
                 </div>
+              </article>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isModalOpen && (
+        <div className="book-reader-backdrop" onClick={() => setIsModalOpen(false)}>
+          <div className="book-reader" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="close-reader" onClick={() => setIsModalOpen(false)}>
+              닫기
+            </button>
+            <div className="book-spread">
+              <article className="book-page left-page">
+                <h2>새 공부 항목 추가</h2>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    if (!modalTitle.trim()) return
+                    handleAddBook(modalTitle, modalCategory, modalPeriod)
+                    setModalTitle('')
+                    setModalCategory('')
+                    setModalPeriod('')
+                    setIsModalOpen(false)
+                  }}
+                >
+                  <label>
+                    제목
+                    <input value={modalTitle} onChange={(e) => setModalTitle(e.target.value)} />
+                  </label>
+                  <label>
+                    주제
+                    <input value={modalCategory} onChange={(e) => setModalCategory(e.target.value)} />
+                  </label>
+                  <label>
+                    공부 기간
+                    <input value={modalPeriod} onChange={(e) => setModalPeriod(e.target.value)} placeholder="예: 2주, 2026-07-01 ~ 2026-07-14" />
+                  </label>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button type="button" onClick={() => setIsModalOpen(false)}>
+                      취소
+                    </button>
+                    <button type="submit">추가</button>
+                  </div>
+                </form>
               </article>
             </div>
           </div>

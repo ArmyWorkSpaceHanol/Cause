@@ -28,7 +28,7 @@ export default function LoginPage({ onLogin }: Props) {
   }
 
   return (
-    <AuthLayout description="로그인하면 환영 타이핑과 나만의 공부 책장이 열립니다.">
+    <AuthLayout description="AI를 통해 규칙적인 공부를 진행하세요!">
       <div className="auth-card-header">
         <span className="auth-pill">Welcome back</span>
         <h2>다시 학습을 시작해볼까요?</h2>

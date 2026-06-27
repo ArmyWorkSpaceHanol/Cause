@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useRef, useState } from 'react'
 
 type Props = {
   children: React.ReactNode
@@ -8,6 +8,7 @@ type Props = {
 }
 
 export default function AuthLayout({ children, eyebrow = 'Cause Library', title = 'Cause', description = '오늘의 학습을 책장처럼 정리하고 이어가세요.' }: Props) {
+
   return (
     <main className="auth-root">
       <div className="auth-background" aria-hidden="true">
@@ -22,9 +23,9 @@ export default function AuthLayout({ children, eyebrow = 'Cause Library', title 
           <h1 className="service-title">{title}</h1>
           <p className="auth-description">{description}</p>
           <div className="mobile-preview" aria-hidden="true">
-            <div className="preview-book blue" />
-            <div className="preview-book pink" />
-            <div className="preview-book green" />
+            {[ 'blue', 'pink', 'green' ].map((c) => (
+              <div key={c} className={`preview-book ${c}`} aria-hidden />
+            ))}
           </div>
         </div>
 
