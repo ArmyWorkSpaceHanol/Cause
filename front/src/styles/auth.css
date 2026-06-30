@@ -290,6 +290,12 @@
   transform: translateY(-1px);
 }
 
+.input-field:disabled {
+  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.34);
+  cursor: not-allowed;
+}
+
 .password-toggle {
   position: absolute;
   right: 9px;
@@ -379,6 +385,16 @@
   font-size: 0.9rem;
   text-align: center;
   animation: shakeSoft 0.34s ease both;
+}
+
+.auth-info {
+  padding: 12px 14px;
+  border: 1px solid rgba(45, 212, 191, 0.28);
+  border-radius: 16px;
+  color: #ccfbf1;
+  background: rgba(19, 78, 74, 0.28);
+  font-size: 0.9rem;
+  text-align: center;
 }
 
 .link-text {

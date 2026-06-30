@@ -14,6 +14,45 @@ type StudyBook = {
   color: BookColor
 }
 
+type StudyBookCreateForm = {
+  formName: 'CauseStudyBookCreateForm'
+  schemaVersion: '1.0'
+  requestId: string
+  createdAt: string
+  locale: 'ko-KR'
+  user: {
+    username: string
+    displayName: string
+    role: Account['role']
+  }
+  studyBook: {
+    title: string
+    topic: string
+    periodText: string
+    description: string
+  }
+  gptInstruction: {
+    intent: 'create_study_plan'
+    outputFormat: 'json'
+    requiredSections: string[]
+  }
+}
+
+type StudyBookApiResponse = {
+  book?: {
+    id?: string
+    title?: string
+    subtitle?: string
+    category?: string
+  }
+  gpt?: {
+    status: 'completed' | 'skipped'
+    content?: string
+    reason?: string
+  }
+  error?: string
+}
+
 type Props = {
   account: Account
   onLogout: () => void
@@ -37,8 +76,21 @@ export default function MainPage({ account, onLogout }: Props) {
   const [modalTitle, setModalTitle] = useState('')
   const [modalCategory, setModalCategory] = useState('')
   const [modalPeriod, setModalPeriod] = useState('')
+  const [isAddingBook, setIsAddingBook] = useState(false)
+  const [addBookError, setAddBookError] = useState('')
   const modalTitleRef = useRef<HTMLInputElement | null>(null)
   const isBookshelfVisible = phase === 'bookshelf'
+
+  const openAddBookModal = () => {
+    setAddBookError('')
+    setIsModalOpen(true)
+  }
+
+  const closeAddBookModal = () => {
+    if (isAddingBook) return
+    setAddBookError('')
+    setIsModalOpen(false)
+  }
 
   const fullText = `${account.displayName}님 환영합니다.\n${streakDays}일 연속 로그인입니다.`
   const displayedLines = fullText.slice(0, typedLength).split('\n')
@@ -70,58 +122,83 @@ export default function MainPage({ account, onLogout }: Props) {
     return () => window.clearTimeout(transitionTimer)
   }, [typedLength, fullText, phase])
 
-  const handleAddBook = (title: string, category: string, period: string) => {
-    const nextBook: StudyBook = {
-      id: Date.now().toString(),
-      title: title.trim(),
-      subtitle: period ? `공부 기간: ${period}` : '새로운 공부 목표가 책으로 추가되었습니다.',
-      category: category || '새로운 목표',
-      color: bookColors[books.length % bookColors.length]
-    }
+  const buildStudyBookForm = (title: string, category: string, period: string): StudyBookCreateForm => {
+    const trimmedTitle = title.trim()
+    const trimmedCategory = category.trim()
+    const trimmedPeriod = period.trim()
+    const topic = trimmedCategory || '새로운 목표'
+    const periodText = trimmedPeriod || '기간 미정'
 
-    // append to the end of the shelf
-    setBooks((prev) => [...prev, nextBook])
-    // attempt to send details to GPT (best-effort; requires VITE_OPENAI_KEY configured)
-    sendToGPT(nextBook, period).catch((err) => console.error('GPT 전송 실패', err))
+    return {
+      formName: 'CauseStudyBookCreateForm',
+      schemaVersion: '1.0',
+      requestId: `study-book-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      locale: 'ko-KR',
+      user: {
+        username: account.username,
+        displayName: account.displayName,
+        role: account.role,
+      },
+      studyBook: {
+        title: trimmedTitle,
+        topic,
+        periodText,
+        description: trimmedPeriod ? `공부 기간: ${trimmedPeriod}` : '새로운 공부 목표가 책으로 추가되었습니다.',
+      },
+      gptInstruction: {
+        intent: 'create_study_plan',
+        outputFormat: 'json',
+        requiredSections: ['bookSummary', 'dailyPlan', 'milestones', 'recommendedResources', 'firstAction'],
+      },
+    }
   }
 
-  async function sendToGPT(book: StudyBook, period: string) {
-    const key = import.meta.env.VITE_OPENAI_KEY as string | undefined
-    if (!key) {
-      console.warn('VITE_OPENAI_KEY가 설정되어 있지 않아 GPT 호출을 건너뜁니다.')
-      return
+  const handleAddBook = async (title: string, category: string, period: string) => {
+    setAddBookError('')
+
+    const form = buildStudyBookForm(title, category, period)
+    if (!form.studyBook.title) {
+      setAddBookError('제목을 입력하세요.')
+      return false
     }
 
-    const payload = {
-      model: 'gpt-3.5-turbo',
-      messages: [
-        { role: 'system', content: '당신은 학습 보조 도우미입니다.' },
+    setIsAddingBook(true)
+    try {
+      const response = await fetch('/api/study-books', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+
+      const data = (await response.json()) as StudyBookApiResponse
+      if (!response.ok) {
+        throw new Error(data.error || '책 추가 요청에 실패했습니다.')
+      }
+
+      setBooks((prev) => [
+        ...prev,
         {
-          role: 'user',
-          content: `새로운 공부 항목이 추가되었습니다. 제목: ${book.title}\n주제: ${book.category}\n공부 기간: ${period}\n설명: ${book.subtitle}`
-        }
-      ],
-      temperature: 0.6
+          id: data.book?.id || form.requestId,
+          title: data.book?.title || form.studyBook.title,
+          subtitle: data.book?.subtitle || form.studyBook.description,
+          category: data.book?.category || form.studyBook.topic,
+          color: bookColors[prev.length % bookColors.length],
+        },
+      ])
+
+      if (data.gpt?.content) {
+        console.log('GPT 학습 계획:', data.gpt.content)
+      }
+
+      return true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '서버 오류로 책을 추가하지 못했습니다.'
+      setAddBookError(message)
+      return false
+    } finally {
+      setIsAddingBook(false)
     }
-
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${key}`
-      },
-      body: JSON.stringify(payload)
-    })
-
-    if (!resp.ok) {
-      const text = await resp.text()
-      throw new Error(`GPT 응답 에러: ${resp.status} ${text}`)
-    }
-
-    const data = await resp.json()
-    const assistant = data.choices?.[0]?.message?.content
-    console.log('GPT 응답:', assistant)
-    return assistant
   }
 
   useEffect(() => {
@@ -160,6 +237,9 @@ export default function MainPage({ account, onLogout }: Props) {
 
           <Link to="/profile" className="profile-book" aria-label={`${account.displayName} 프로필 책 열기`}>
             <span className="profile-book-label">Profile</span>
+            <span className="profile-book-avatar" aria-hidden="true">
+              {account.profileImage ? <img src={account.profileImage} alt="" /> : (account.displayName || account.username).slice(0, 1).toUpperCase()}
+            </span>
             <strong>{account.displayName}</strong>
             <small>사용자 프로필 책</small>
           </Link>
@@ -186,7 +266,7 @@ export default function MainPage({ account, onLogout }: Props) {
             <button
               type="button"
               className="book-spine-card add-card"
-              onClick={() => setIsModalOpen(true)}
+              onClick={openAddBookModal}
               aria-label="책 추가하기"
             >
               <span className="book-category">추가</span>
@@ -229,28 +309,28 @@ export default function MainPage({ account, onLogout }: Props) {
       )}
 
       {isModalOpen && (
-        <div className="book-reader-backdrop" onClick={() => setIsModalOpen(false)}>
+        <div className="book-reader-backdrop" onClick={closeAddBookModal}>
           <div className="book-reader" onClick={(event) => event.stopPropagation()}>
-            <button type="button" className="close-reader" onClick={() => setIsModalOpen(false)}>
+            <button type="button" className="close-reader" onClick={closeAddBookModal} disabled={isAddingBook}>
               닫기
             </button>
             <div className="book-spread">
               <article className="book-page left-page">
                 <h2>새 공부 항목 추가</h2>
                 <form
-                  onSubmit={(e) => {
+                  onSubmit={async (e) => {
                     e.preventDefault()
-                    if (!modalTitle.trim()) return
-                    handleAddBook(modalTitle, modalCategory, modalPeriod)
+                    const added = await handleAddBook(modalTitle, modalCategory, modalPeriod)
+                    if (!added) return
                     setModalTitle('')
                     setModalCategory('')
                     setModalPeriod('')
-                    setIsModalOpen(false)
+                    closeAddBookModal()
                   }}
                 >
                   <label>
                     제목
-                    <input value={modalTitle} onChange={(e) => setModalTitle(e.target.value)} />
+                    <input ref={modalTitleRef} value={modalTitle} onChange={(e) => setModalTitle(e.target.value)} />
                   </label>
                   <label>
                     주제
@@ -260,11 +340,18 @@ export default function MainPage({ account, onLogout }: Props) {
                     공부 기간
                     <input value={modalPeriod} onChange={(e) => setModalPeriod(e.target.value)} placeholder="예: 2주, 2026-07-01 ~ 2026-07-14" />
                   </label>
+                  {addBookError && (
+                    <div className="auth-error" role="alert">
+                      {addBookError}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                    <button type="button" onClick={() => setIsModalOpen(false)}>
+                    <button type="button" onClick={closeAddBookModal} disabled={isAddingBook}>
                       취소
                     </button>
-                    <button type="submit">추가</button>
+                    <button type="submit" disabled={isAddingBook}>
+                      {isAddingBook ? '전송 중...' : '추가'}
+                    </button>
                   </div>
                 </form>
               </article>

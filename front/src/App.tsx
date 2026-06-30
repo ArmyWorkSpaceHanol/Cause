@@ -30,7 +30,7 @@ export default function App() {
           path="/profile"
           element={
             currentAccount ? (
-              <ProfilePage account={currentAccount} onLogout={() => setCurrentAccount(null)} />
+              <ProfilePage account={currentAccount} onUpdate={setCurrentAccount} onLogout={() => setCurrentAccount(null)} />
             ) : (
               <Navigate to="/" replace />
             )
