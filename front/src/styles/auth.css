@@ -61,6 +61,8 @@
 .auth-shell {
   position: relative;
   z-index: 1;
+  isolation: isolate;
+  overflow: hidden;
   width: min(100%, 1020px);
   display: grid;
   gap: 16px;
@@ -125,6 +127,7 @@
 }
 
 .mobile-preview {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 10px;
@@ -137,20 +140,34 @@
 }
 
 .preview-book {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 54px;
+  appearance: none;
   width: 54px;
+  padding: 0;
+  border: 0;
   border-radius: 12px 16px 8px 8px;
   box-shadow: inset 9px 0 14px rgba(255, 255, 255, 0.12), 0 14px 24px rgba(0, 0, 0, 0.18);
   transform-origin: bottom center;
   animation: bookPulse 3s ease-in-out infinite;
   touch-action: none;
-  cursor: grab;
-  position: relative;
+  cursor: pointer;
   transition: transform 180ms cubic-bezier(.2,.9,.2,1), box-shadow 120ms ease;
 }
 
 .preview-book.blue { height: 108px; background: linear-gradient(160deg, #2563eb, #172554); }
 .preview-book.pink { height: 88px; background: linear-gradient(160deg, #db2777, #581c87); animation-delay: -0.8s; }
 .preview-book.green { height: 118px; background: linear-gradient(160deg, #059669, #064e3b); animation-delay: -1.6s; }
+
+.preview-book:hover {
+  box-shadow: inset 9px 0 14px rgba(255, 255, 255, 0.16), 0 18px 30px rgba(0, 0, 0, 0.28);
+  filter: brightness(1.08);
+}
+
+.preview-book:active {
+  transform: translateY(-4px) scale(0.96) rotate(-2deg) !important;
+}
 
 .preview-book.dragging {
   cursor: grabbing;
@@ -162,7 +179,42 @@
 /* pop burst effect */
 
 /* paper particles */
-/* demo preview and particle visuals removed */
+.paper-burst-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.paper-particle {
+  position: absolute;
+  display: block;
+  left: 0;
+  top: 0;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 2px;
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.18);
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+.paper-particle::after {
+  content: '';
+  position: absolute;
+  inset: 2px auto 2px 45%;
+  width: 1px;
+  background: rgba(15, 23, 42, 0.1);
+}
+
+.paper-particle.strip {
+  border-radius: 999px;
+}
+
+.paper-particle.shard {
+  border-radius: 2px 5px 2px 5px;
+  clip-path: polygon(12% 0, 100% 18%, 72% 100%, 0 78%);
+}
 
 .auth-card-header {
   display: grid;
@@ -357,6 +409,7 @@
 .auth-button:focus-visible,
 .input-field:focus-visible,
 .password-toggle:focus-visible,
+.preview-book:focus-visible,
 .link-text:focus-visible {
   outline: 3px solid rgba(125, 211, 252, 0.9);
   outline-offset: 4px;
@@ -405,6 +458,7 @@
 
   .preview-book {
     width: 44px;
+    flex-basis: 44px;
   }
 
   .preview-book.blue { height: 84px; }
@@ -420,10 +474,15 @@
   .auth-button,
   .input-field,
   .password-toggle,
+  .paper-particle,
   .link-text,
   .auth-error {
     animation: none;
     transition: none;
+  }
+
+  .paper-burst-layer {
+    display: none;
   }
 }
 
