@@ -4,7 +4,7 @@ import AuthLayout from '../components/AuthLayout'
 import FormInput from '../components/FormInput'
 import AuthButton from '../components/AuthButton'
 import LinkText from '../components/LinkText'
-import { accounts, type Account } from '../data/accounts'
+import { getAllAccounts, type Account } from '../data/accounts'
 
 type Props = {
   onLogin: (account: Account) => void
@@ -18,7 +18,7 @@ export default function LoginPage({ onLogin }: Props) {
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const matched = accounts.find((account) => account.username === username && account.password === password)
+    const matched = getAllAccounts().find((account) => account.username === username && account.password === password)
     if (!matched) {
       setError('아이디 또는 비밀번호가 일치하지 않습니다.')
       return

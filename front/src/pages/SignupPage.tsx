@@ -4,6 +4,24 @@ import AuthLayout from '../components/AuthLayout'
 import FormInput from '../components/FormInput'
 import AuthButton from '../components/AuthButton'
 import LinkText from '../components/LinkText'
+import { getAllAccounts, saveStoredAccount, type Account } from '../data/accounts'
+
+type SendCodeResponse = {
+  expiresInSeconds?: number
+  cooldownSeconds?: number
+  devCode?: string
+  error?: string
+}
+
+type VerifyCodeResponse = {
+  verified?: boolean
+  error?: string
+}
+
+type SignupResponse = {
+  account?: Omit<Account, 'password'>
+  error?: string
+}
 
 export default function SignupPage() {
   const [username, setUsername] = useState('')
@@ -16,6 +34,7 @@ export default function SignupPage() {
   const [codeSent, setCodeSent] = useState(false)
   const [code, setCode] = useState('')
   const [emailVerified, setEmailVerified] = useState(false)
+  const [verifiedEmail, setVerifiedEmail] = useState('')
   const [sendLoading, setSendLoading] = useState(false)
   const [verifyLoading, setVerifyLoading] = useState(false)
   const [signupLoading, setSignupLoading] = useState(false)
@@ -25,11 +44,26 @@ export default function SignupPage() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
   }
 
+  function normalizeEmail(v: string) {
+    return v.trim().toLowerCase()
+  }
+
+  function handleEmailChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const nextEmail = e.target.value
+    setEmail(nextEmail)
+    setCode('')
+    setCodeSent(false)
+    setEmailVerified(false)
+    setVerifiedEmail('')
+    setInfo('')
+    setError('')
+  }
 
   async function handleSendCode() {
     setError('')
     setInfo('')
-    if (!validateEmail(email)) {
+    const targetEmail = normalizeEmail(email)
+    if (!validateEmail(targetEmail)) {
       setError('올바른 이메일 형식을 입력하세요.')
       return
     }
@@ -38,19 +72,23 @@ export default function SignupPage() {
       const resp = await fetch('/api/auth/send-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email: targetEmail })
       })
+      const data = (await resp.json()) as SendCodeResponse
 
       if (!resp.ok) {
-        const text = await resp.text()
-        throw new Error(text || '전송 실패')
+        throw new Error(data.error || '인증코드 전송에 실패했습니다.')
       }
 
+      setEmail(targetEmail)
+      setCode('')
       setCodeSent(true)
-      setInfo('인증 코드가 이메일로 전송되었습니다.')
-    } catch (err: any) {
+      setEmailVerified(false)
+      setVerifiedEmail('')
+      setInfo(data.devCode ? `인증 코드가 전송되었습니다. 개발 모드 코드: ${data.devCode}` : '인증 코드가 이메일로 전송되었습니다.')
+    } catch (err) {
       console.error(err)
-      setError('인증코드 전송에 실패했습니다. 서버 설정을 확인하세요.')
+      setError(err instanceof Error ? err.message : '인증코드 전송에 실패했습니다. 서버 설정을 확인하세요.')
     } finally {
       setSendLoading(false)
     }
@@ -59,23 +97,26 @@ export default function SignupPage() {
   async function handleVerifyCode() {
     setError('')
     setInfo('')
+    const targetEmail = normalizeEmail(email)
+    if (!validateEmail(targetEmail)) return setError('올바른 이메일 형식을 입력하세요.')
     if (!code.trim()) return setError('인증코드를 입력하세요.')
     setVerifyLoading(true)
     try {
       const resp = await fetch('/api/auth/verify-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code })
+        body: JSON.stringify({ email: targetEmail, code: code.trim() })
       })
-      const data = await resp.json()
+      const data = (await resp.json()) as VerifyCodeResponse
       if (!resp.ok || !data?.verified) {
         throw new Error(data?.error || '검증 실패')
       }
       setEmailVerified(true)
+      setVerifiedEmail(targetEmail)
       setInfo('이메일 인증이 완료되었습니다.')
-    } catch (err: any) {
+    } catch (err) {
       console.error(err)
-      setError('인증코드가 일치하지 않거나 서버 오류가 발생했습니다.')
+      setError(err instanceof Error ? err.message : '인증코드가 일치하지 않거나 서버 오류가 발생했습니다.')
     } finally {
       setVerifyLoading(false)
     }
@@ -85,25 +126,34 @@ export default function SignupPage() {
     e.preventDefault()
     setError('')
     setInfo('')
+    const targetEmail = normalizeEmail(email)
     if (!username.trim()) return setError('아이디를 입력하세요.')
+    if (!validateEmail(targetEmail)) return setError('올바른 이메일 형식을 입력하세요.')
     if (password.length < 8) return setError('비밀번호는 최소 8자 이상이어야 합니다.')
     if (password !== confirm) return setError('비밀번호 확인이 일치하지 않습니다.')
-    if (!emailVerified) return setError('이메일 인증을 완료해주세요.')
+    if (!emailVerified || verifiedEmail !== targetEmail) return setError('현재 이메일의 인증을 완료해주세요.')
+
+    const duplicatedAccount = getAllAccounts().find((account) => account.username === username.trim() || account.email === targetEmail)
+    if (duplicatedAccount?.username === username.trim()) return setError('이미 사용 중인 아이디입니다.')
+    if (duplicatedAccount?.email === targetEmail) return setError('이미 가입된 이메일입니다.')
 
     setSignupLoading(true)
     try {
       const resp = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), displayName, email, password })
+        body: JSON.stringify({ username: username.trim(), displayName: displayName.trim(), email: targetEmail, password })
       })
-      const data = await resp.json()
+      const data = (await resp.json()) as SignupResponse
       if (!resp.ok) throw new Error(data?.error || '회원가입 실패')
+      if (data.account) {
+        saveStoredAccount({ ...data.account, password })
+      }
       setInfo('회원가입이 완료되었습니다. 로그인 페이지로 이동합니다.')
       setTimeout(() => navigate('/'), 900)
-    } catch (err: any) {
+    } catch (err) {
       console.error(err)
-      setError(err?.message || '서버 오류로 가입에 실패했습니다.')
+      setError(err instanceof Error ? err.message : '서버 오류로 가입에 실패했습니다.')
     } finally {
       setSignupLoading(false)
     }
@@ -123,7 +173,7 @@ export default function SignupPage() {
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <div style={{ flex: 1 }}>
-            <FormInput name="email" label="이메일" placeholder="example@domain.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+            <FormInput name="email" label="이메일" placeholder="example@domain.com" value={email} onChange={handleEmailChange} autoComplete="email" />
           </div>
           <div style={{ width: 140 }}>
             <AuthButton type="button" onClick={handleSendCode} disabled={sendLoading}>{sendLoading ? '전송 중...' : '인증코드 전송'}</AuthButton>
@@ -133,7 +183,7 @@ export default function SignupPage() {
         {codeSent && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <div style={{ flex: 1 }}>
-              <FormInput name="code" label="인증코드" placeholder="받은 6자리 코드" value={code} onChange={(e) => setCode(e.target.value)} />
+              <FormInput name="code" label="인증코드" placeholder="받은 6자리 코드" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" />
             </div>
             <div style={{ width: 140 }}>
               <AuthButton type="button" onClick={handleVerifyCode} disabled={verifyLoading || emailVerified}>{verifyLoading ? '검증 중...' : emailVerified ? '인증완료' : '검증'}</AuthButton>

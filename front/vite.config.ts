@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { createHash, randomInt, randomUUID } from 'node:crypto'
 
 type StudyBookCreateForm = {
   formName?: string
@@ -25,8 +26,48 @@ type StudyBookCreateForm = {
   }
 }
 
-const readJsonBody = (req: any) =>
-  new Promise<StudyBookCreateForm>((resolve, reject) => {
+type SendCodeRequest = {
+  email?: string
+}
+
+type VerifyCodeRequest = {
+  email?: string
+  code?: string
+}
+
+type SignupRequest = {
+  username?: string
+  displayName?: string
+  email?: string
+  password?: string
+}
+
+type EmailVerificationRecord = {
+  email: string
+  salt: string
+  codeHash: string
+  expiresAt: number
+  resendAvailableAt: number
+  attempts: number
+  verified: boolean
+}
+
+type ServerAccount = {
+  username: string
+  displayName: string
+  email: string
+  role: 'user'
+}
+
+const emailVerificationRecords = new Map<string, EmailVerificationRecord>()
+const signedUpAccounts = new Map<string, ServerAccount>()
+const reservedUsernames = new Set(['dev_admin'])
+const verificationCodeTtlMs = 10 * 60 * 1000
+const verificationCodeCooldownMs = 60 * 1000
+const maxVerificationAttempts = 5
+
+const readJsonBody = <T = Record<string, unknown>>(req: any) =>
+  new Promise<T>((resolve, reject) => {
     let body = ''
 
     req.on('data', (chunk: { toString: () => string }) => {
@@ -35,7 +76,7 @@ const readJsonBody = (req: any) =>
 
     req.on('end', () => {
       try {
-        resolve(body ? JSON.parse(body) : {})
+        resolve((body ? JSON.parse(body) : {}) as T)
       } catch {
         reject(new Error('요청 본문이 올바른 JSON 형식이 아닙니다.'))
       }
@@ -51,6 +92,182 @@ const sendJson = (res: any, statusCode: number, data: unknown) => {
 }
 
 const normalizeText = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
+
+const normalizeEmailAddress = (value: unknown) => normalizeText(value).toLowerCase()
+
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+
+const createVerificationCode = () => randomInt(0, 1_000_000).toString().padStart(6, '0')
+
+const hashVerificationCode = (code: string, salt: string) =>
+  createHash('sha256').update(`${salt}:${code}`).digest('hex')
+
+const createAuthApiPlugin = () => ({
+  name: 'cause-auth-api',
+  configureServer(server: any) {
+    server.middlewares.use('/api/auth/send-code', async (req: any, res: any) => {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { error: 'POST 요청만 지원합니다.' })
+        return
+      }
+
+      try {
+        const body = await readJsonBody<SendCodeRequest>(req)
+        const email = normalizeEmailAddress(body.email)
+
+        if (!isValidEmail(email)) {
+          sendJson(res, 400, { error: '올바른 이메일 형식을 입력하세요.' })
+          return
+        }
+
+        const now = Date.now()
+        const existingRecord = emailVerificationRecords.get(email)
+
+        if (existingRecord && existingRecord.resendAvailableAt > now) {
+          const retryAfterSeconds = Math.ceil((existingRecord.resendAvailableAt - now) / 1000)
+          sendJson(res, 429, { error: `${retryAfterSeconds}초 후에 다시 전송할 수 있습니다.`, retryAfterSeconds })
+          return
+        }
+
+        const code = createVerificationCode()
+        const salt = randomUUID()
+        emailVerificationRecords.set(email, {
+          email,
+          salt,
+          codeHash: hashVerificationCode(code, salt),
+          expiresAt: now + verificationCodeTtlMs,
+          resendAvailableAt: now + verificationCodeCooldownMs,
+          attempts: 0,
+          verified: false,
+        })
+
+        console.info(`[Cause auth] Verification code for ${email}: ${code}`)
+
+        sendJson(res, 200, {
+          sent: true,
+          expiresInSeconds: verificationCodeTtlMs / 1000,
+          cooldownSeconds: verificationCodeCooldownMs / 1000,
+          devCode: process.env.NODE_ENV === 'production' ? undefined : code,
+        })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '인증코드 전송 중 오류가 발생했습니다.'
+        sendJson(res, 500, { error: message })
+      }
+    })
+
+    server.middlewares.use('/api/auth/verify-code', async (req: any, res: any) => {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { error: 'POST 요청만 지원합니다.' })
+        return
+      }
+
+      try {
+        const body = await readJsonBody<VerifyCodeRequest>(req)
+        const email = normalizeEmailAddress(body.email)
+        const code = normalizeText(body.code)
+        const record = emailVerificationRecords.get(email)
+        const now = Date.now()
+
+        if (!isValidEmail(email) || !code) {
+          sendJson(res, 400, { verified: false, error: '이메일과 인증코드를 입력하세요.' })
+          return
+        }
+
+        if (!record) {
+          sendJson(res, 400, { verified: false, error: '먼저 인증코드를 전송해주세요.' })
+          return
+        }
+
+        if (record.expiresAt <= now) {
+          emailVerificationRecords.delete(email)
+          sendJson(res, 400, { verified: false, error: '인증코드가 만료되었습니다. 다시 전송해주세요.' })
+          return
+        }
+
+        if (record.attempts >= maxVerificationAttempts) {
+          emailVerificationRecords.delete(email)
+          sendJson(res, 429, { verified: false, error: '인증 시도 횟수를 초과했습니다. 코드를 다시 전송해주세요.' })
+          return
+        }
+
+        const isMatched = hashVerificationCode(code, record.salt) === record.codeHash
+        if (!isMatched) {
+          record.attempts += 1
+          const remainingAttempts = Math.max(0, maxVerificationAttempts - record.attempts)
+          sendJson(res, 400, { verified: false, error: `인증코드가 일치하지 않습니다. 남은 시도: ${remainingAttempts}회` })
+          return
+        }
+
+        record.verified = true
+        sendJson(res, 200, { verified: true })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '인증코드 검증 중 오류가 발생했습니다.'
+        sendJson(res, 500, { verified: false, error: message })
+      }
+    })
+
+    server.middlewares.use('/api/auth/signup', async (req: any, res: any) => {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { error: 'POST 요청만 지원합니다.' })
+        return
+      }
+
+      try {
+        const body = await readJsonBody<SignupRequest>(req)
+        const username = normalizeText(body.username)
+        const displayName = normalizeText(body.displayName) || username
+        const email = normalizeEmailAddress(body.email)
+        const password = normalizeText(body.password)
+        const verificationRecord = emailVerificationRecords.get(email)
+
+        if (!username) {
+          sendJson(res, 400, { error: '아이디를 입력하세요.' })
+          return
+        }
+
+        if (!isValidEmail(email)) {
+          sendJson(res, 400, { error: '올바른 이메일 형식을 입력하세요.' })
+          return
+        }
+
+        if (password.length < 8) {
+          sendJson(res, 400, { error: '비밀번호는 최소 8자 이상이어야 합니다.' })
+          return
+        }
+
+        if (!verificationRecord?.verified || verificationRecord.expiresAt <= Date.now()) {
+          sendJson(res, 400, { error: '이메일 인증을 완료해주세요.' })
+          return
+        }
+
+        if (reservedUsernames.has(username) || signedUpAccounts.has(username)) {
+          sendJson(res, 409, { error: '이미 사용 중인 아이디입니다.' })
+          return
+        }
+
+        const isEmailUsed = [...signedUpAccounts.values()].some((account) => account.email === email)
+        if (isEmailUsed) {
+          sendJson(res, 409, { error: '이미 가입된 이메일입니다.' })
+          return
+        }
+
+        const account: ServerAccount = {
+          username,
+          displayName,
+          email,
+          role: 'user',
+        }
+
+        signedUpAccounts.set(username, account)
+        emailVerificationRecords.delete(email)
+        sendJson(res, 200, { account })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '회원가입 처리 중 오류가 발생했습니다.'
+        sendJson(res, 500, { error: message })
+      }
+    })
+  },
+})
 
 const createGptStudyPlanForm = (form: StudyBookCreateForm) => {
   const title = normalizeText(form.studyBook?.title)
@@ -144,7 +361,7 @@ const studyBookApiPlugin = () => ({
       }
 
       try {
-        const form = await readJsonBody(req)
+        const form = await readJsonBody<StudyBookCreateForm>(req)
         const title = normalizeText(form.studyBook?.title)
         const category = normalizeText(form.studyBook?.topic) || '새로운 목표'
         const periodText = normalizeText(form.studyBook?.periodText)
@@ -178,6 +395,6 @@ const studyBookApiPlugin = () => ({
 })
 
 export default defineConfig({
-  plugins: [react(), studyBookApiPlugin()],
+  plugins: [react(), createAuthApiPlugin(), studyBookApiPlugin()],
   server: { port: 3000 }
 })
